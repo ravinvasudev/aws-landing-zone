@@ -1,0 +1,33 @@
+# Example terraform.tfvars for Workload Account
+# Copy to terraform.tfvars and fill in your values
+
+# Account identification
+account_name = "my-product-prod"
+environment  = "prod"
+
+# Tagging (required)
+cost_center         = "product-team"
+owner               = "product-team@example.com"
+data_classification = "internal"
+product             = "my-product"
+
+# Networking
+aws_region         = "us-east-1"
+vpc_cidr           = "10.100.0.0/16"
+availability_zones = ["us-east-1a", "us-east-1b"]
+
+public_subnet_cidrs   = ["10.100.1.0/24", "10.100.2.0/24"]
+private_subnet_cidrs  = ["10.100.11.0/24", "10.100.12.0/24"]
+isolated_subnet_cidrs = ["10.100.21.0/24", "10.100.22.0/24"]
+
+enable_nat_gateway = true
+
+# Security
+permission_boundary_arn = "arn:aws:iam::111111111111:policy/LandingZoneBoundary"
+
+# FinOps
+monthly_budget_limit = 1000
+budget_alert_emails = [
+  "product-team@example.com",
+  "finops@example.com"
+]

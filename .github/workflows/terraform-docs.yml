@@ -1,0 +1,48 @@
+# Module Documentation Generation
+# Generates README files using terraform-docs
+
+name: Generate Docs
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'modules/**/*.tf'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'modules/**/*.tf'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  docs:
+    name: Generate terraform-docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Generate terraform-docs
+        uses: terraform-docs/gh-actions@v1
+        with:
+          working-dir: modules
+          recursive: true
+          recursive-path: .
+          output-file: README.md
+          output-method: inject
+          git-push: ${{ github.event_name == 'push' }}
+          git-commit-message: "docs: update module documentation"
+
+      - name: Check for changes
+        if: github.event_name == 'pull_request'
+        run: |
+          if [[ -n $(git status --porcelain) ]]; then
+            echo "::warning::terraform-docs would update README files. Run terraform-docs locally or merge to regenerate."
+          fi

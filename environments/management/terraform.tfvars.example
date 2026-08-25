@@ -1,0 +1,42 @@
+# Example terraform.tfvars for Management Account
+# Copy to terraform.tfvars and fill in your values
+
+aws_region = "us-east-1"
+
+allowed_regions = [
+  "us-east-1",
+  "us-west-2"
+]
+
+organizational_units = {
+  "Security" = {
+    description = "Security and audit accounts"
+  }
+  "Infrastructure" = {
+    description = "Shared infrastructure accounts"
+  }
+  "Workloads" = {
+    description = "Product team workload accounts"
+  }
+  "Workloads/Production" = {
+    parent_ou   = "Workloads"
+    description = "Production workload accounts"
+  }
+  "Workloads/NonProduction" = {
+    parent_ou   = "Workloads"
+    description = "Non-production workload accounts"
+  }
+  "Sandbox" = {
+    description = "Developer sandbox accounts"
+  }
+  "Suspended" = {
+    description = "Accounts pending deletion"
+  }
+}
+
+monthly_budget_limit = 10000
+
+budget_alert_emails = [
+  "cloud-finops@example.com",
+  "platform-team@example.com"
+]

@@ -1,0 +1,5 @@
+# Conftest configuration
+# https://www.conftest.dev/configuration/
+
+policy = "policies/conftest/terraform"
+output = "stdout"
