@@ -117,3 +117,54 @@ resource "aws_organizations_policy" "deny_root" {
 | readonly_role_name | Read-only role name |
 | region_restriction_scp | SCP JSON for region restriction |
 | deny_root_scp | SCP JSON to deny root user |
+
+<!-- BEGIN_TF_DOCS -->
+## Requirements
+
+| Name | Version |
+|------|---------|
+| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.5.0 |
+| <a name="requirement_aws"></a> [aws](#requirement\_aws) | >= 5.0.0, < 6.0.0 |
+
+## Providers
+
+No providers.
+
+## Modules
+
+No modules.
+
+## Resources
+
+No resources.
+
+## Inputs
+
+| Name | Description | Type | Default | Required |
+|------|-------------|------|---------|:--------:|
+| <a name="input_admin_role_name"></a> [admin\_role\_name](#input\_admin\_role\_name) | Name for the admin role | `string` | `"LandingZoneAdmin"` | no |
+| <a name="input_admin_role_trust_arns"></a> [admin\_role\_trust\_arns](#input\_admin\_role\_trust\_arns) | ARNs of principals allowed to assume the admin role | `list(string)` | `[]` | no |
+| <a name="input_allowed_regions"></a> [allowed\_regions](#input\_allowed\_regions) | List of AWS regions where resources can be created | `list(string)` | <pre>[<br/>  "us-east-1",<br/>  "us-west-2"<br/>]</pre> | no |
+| <a name="input_allowed_services"></a> [allowed\_services](#input\_allowed\_services) | List of AWS services allowed in the permission boundary (empty = all) | `list(string)` | `[]` | no |
+| <a name="input_create_admin_role"></a> [create\_admin\_role](#input\_create\_admin\_role) | Whether to create an admin role with permission boundary | `bool` | `true` | no |
+| <a name="input_create_readonly_role"></a> [create\_readonly\_role](#input\_create\_readonly\_role) | Whether to create a read-only role | `bool` | `true` | no |
+| <a name="input_denied_actions"></a> [denied\_actions](#input\_denied\_actions) | List of IAM actions explicitly denied in the permission boundary | `list(string)` | <pre>[<br/>  "organizations:*",<br/>  "account:*",<br/>  "iam:CreateUser",<br/>  "iam:CreateAccessKey",<br/>  "iam:DeleteAccountPasswordPolicy",<br/>  "iam:UpdateAccountPasswordPolicy"<br/>]</pre> | no |
+| <a name="input_password_policy"></a> [password\_policy](#input\_password\_policy) | IAM account password policy settings | <pre>object({<br/>    minimum_password_length        = optional(number, 14)<br/>    require_lowercase_characters   = optional(bool, true)<br/>    require_uppercase_characters   = optional(bool, true)<br/>    require_numbers                = optional(bool, true)<br/>    require_symbols                = optional(bool, true)<br/>    allow_users_to_change_password = optional(bool, true)<br/>    max_password_age               = optional(number, 90)<br/>    password_reuse_prevention      = optional(number, 24)<br/>  })</pre> | `{}` | no |
+| <a name="input_permission_boundary_name"></a> [permission\_boundary\_name](#input\_permission\_boundary\_name) | Name for the permission boundary policy | `string` | `"LandingZoneBoundary"` | no |
+| <a name="input_readonly_role_name"></a> [readonly\_role\_name](#input\_readonly\_role\_name) | Name for the read-only role | `string` | `"LandingZoneReadOnly"` | no |
+| <a name="input_require_mfa_for_console"></a> [require\_mfa\_for\_console](#input\_require\_mfa\_for\_console) | Require MFA for console access | `bool` | `true` | no |
+| <a name="input_tags"></a> [tags](#input\_tags) | Tags to apply to IAM resources | `map(string)` | `{}` | no |
+
+## Outputs
+
+| Name | Description |
+|------|-------------|
+| <a name="output_admin_role_arn"></a> [admin\_role\_arn](#output\_admin\_role\_arn) | The ARN of the admin role |
+| <a name="output_admin_role_name"></a> [admin\_role\_name](#output\_admin\_role\_name) | The name of the admin role |
+| <a name="output_deny_root_scp"></a> [deny\_root\_scp](#output\_deny\_root\_scp) | SCP JSON document to deny root user actions |
+| <a name="output_permission_boundary_arn"></a> [permission\_boundary\_arn](#output\_permission\_boundary\_arn) | The ARN of the permission boundary policy |
+| <a name="output_permission_boundary_name"></a> [permission\_boundary\_name](#output\_permission\_boundary\_name) | The name of the permission boundary policy |
+| <a name="output_readonly_role_arn"></a> [readonly\_role\_arn](#output\_readonly\_role\_arn) | The ARN of the read-only role |
+| <a name="output_readonly_role_name"></a> [readonly\_role\_name](#output\_readonly\_role\_name) | The name of the read-only role |
+| <a name="output_region_restriction_scp"></a> [region\_restriction\_scp](#output\_region\_restriction\_scp) | SCP JSON document for region restriction |
+<!-- END_TF_DOCS -->

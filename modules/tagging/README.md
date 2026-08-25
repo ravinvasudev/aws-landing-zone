@@ -80,3 +80,43 @@ resource "aws_organizations_policy" "tagging" {
 | required_tags | Only required tags |
 | cost_allocation_tags | Tags for cost allocation |
 | tag_policy_document | AWS Organizations tag policy JSON |
+
+<!-- BEGIN_TF_DOCS -->
+## Requirements
+
+| Name | Version |
+|------|---------|
+| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.5.0 |
+
+## Providers
+
+No providers.
+
+## Modules
+
+No modules.
+
+## Resources
+
+No resources.
+
+## Inputs
+
+| Name | Description | Type | Default | Required |
+|------|-------------|------|---------|:--------:|
+| <a name="input_additional_tags"></a> [additional\_tags](#input\_additional\_tags) | Additional optional tags to include | `map(string)` | `{}` | no |
+| <a name="input_cost_center"></a> [cost\_center](#input\_cost\_center) | Cost center code for billing allocation | `string` | n/a | yes |
+| <a name="input_data_classification"></a> [data\_classification](#input\_data\_classification) | Data classification level for compliance | `string` | n/a | yes |
+| <a name="input_environment"></a> [environment](#input\_environment) | Environment designation | `string` | n/a | yes |
+| <a name="input_owner"></a> [owner](#input\_owner) | Team or individual responsible for the resource (email or team name) | `string` | n/a | yes |
+| <a name="input_product"></a> [product](#input\_product) | Product or application name | `string` | n/a | yes |
+
+## Outputs
+
+| Name | Description |
+|------|-------------|
+| <a name="output_cost_allocation_tags"></a> [cost\_allocation\_tags](#output\_cost\_allocation\_tags) | Tags used for cost allocation reports |
+| <a name="output_required_tags"></a> [required\_tags](#output\_required\_tags) | Only the required tags (for validation purposes) |
+| <a name="output_tag_policy_document"></a> [tag\_policy\_document](#output\_tag\_policy\_document) | AWS Organizations tag policy document enforcing the tag schema |
+| <a name="output_tags"></a> [tags](#output\_tags) | Complete tag map to apply to resources |
+<!-- END_TF_DOCS -->

@@ -62,3 +62,46 @@ module "account_baseline" {
 | guardduty_detector_id | The ID of the GuardDuty detector |
 | cloudtrail_arn | The ARN of the CloudTrail trail |
 | permission_boundary_arn | The ARN of the permission boundary applied |
+
+<!-- BEGIN_TF_DOCS -->
+## Requirements
+
+| Name | Version |
+|------|---------|
+| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.5.0 |
+| <a name="requirement_aws"></a> [aws](#requirement\_aws) | >= 5.0.0, < 6.0.0 |
+
+## Providers
+
+No providers.
+
+## Modules
+
+No modules.
+
+## Resources
+
+No resources.
+
+## Inputs
+
+| Name | Description | Type | Default | Required |
+|------|-------------|------|---------|:--------:|
+| <a name="input_account_id"></a> [account\_id](#input\_account\_id) | The AWS account ID where the baseline is being applied | `string` | n/a | yes |
+| <a name="input_account_name"></a> [account\_name](#input\_account\_name) | Human-readable name for the account (used in resource naming) | `string` | n/a | yes |
+| <a name="input_enable_cloudtrail"></a> [enable\_cloudtrail](#input\_enable\_cloudtrail) | Whether to enable account-level CloudTrail (set false if using org trail) | `bool` | `false` | no |
+| <a name="input_enable_config"></a> [enable\_config](#input\_enable\_config) | Whether to enable AWS Config in this account | `bool` | `true` | no |
+| <a name="input_enable_guardduty"></a> [enable\_guardduty](#input\_enable\_guardduty) | Whether to enable GuardDuty in this account | `bool` | `true` | no |
+| <a name="input_environment"></a> [environment](#input\_environment) | Environment designation (dev, staging, prod, sandbox) | `string` | n/a | yes |
+| <a name="input_permission_boundary_arn"></a> [permission\_boundary\_arn](#input\_permission\_boundary\_arn) | ARN of the IAM permission boundary to attach to all IAM entities | `string` | `null` | no |
+| <a name="input_tags"></a> [tags](#input\_tags) | Tags to apply to all resources created by this module | `map(string)` | `{}` | no |
+
+## Outputs
+
+| Name | Description |
+|------|-------------|
+| <a name="output_cloudtrail_arn"></a> [cloudtrail\_arn](#output\_cloudtrail\_arn) | The ARN of the CloudTrail trail (if enabled) |
+| <a name="output_config_recorder_id"></a> [config\_recorder\_id](#output\_config\_recorder\_id) | The ID of the AWS Config recorder |
+| <a name="output_guardduty_detector_id"></a> [guardduty\_detector\_id](#output\_guardduty\_detector\_id) | The ID of the GuardDuty detector |
+| <a name="output_permission_boundary_arn"></a> [permission\_boundary\_arn](#output\_permission\_boundary\_arn) | The ARN of the permission boundary applied to this account |
+<!-- END_TF_DOCS -->
