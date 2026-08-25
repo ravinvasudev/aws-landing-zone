@@ -1,0 +1,6 @@
+# State Bootstrap Configuration
+# Copy this file to terraform.tfvars and customize
+
+aws_region  = "us-east-1"
+team_name   = "my-team"
+cost_center = "CLOUD-001"

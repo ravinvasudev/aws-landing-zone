@@ -6,27 +6,52 @@ A reusable, opinionated set of Terraform modules and reference configurations fo
 
 This repository provides a Cloud Center of Excellence (CCoE) Landing Zone Blueprint that enables autonomous product teams to stand up compliant AWS environments without central platform team involvement for every account.
 
+## Operating Model
+
+This blueprint follows a **decoupled consumption model**:
+
+| Component | Owner | Location |
+|-----------|-------|----------|
+| Terraform Modules | CCoE | This repository, published via Terraform Registry or Git tags |
+| Reusable Workflows | CCoE | `.github/workflows/reusable-*.yml` in this repository |
+| Policy Rules | CCoE | `policies/` in this repository |
+| Environment Configs | Product Teams | Team's own repository |
+| State Files | Product Teams | Team's own S3 bucket |
+| Pipeline Execution | Product Teams | Team's GitHub Actions calling CCoE workflows |
+
+**For product teams**: See the [Consumption Guide](docs/consumption-guide.md) and [product-team-template/](product-team-template/) for getting started.
+
 ## Repository Structure
 
 ```
 aws-landing-zone/
-├── modules/                    # Reusable Terraform modules
-│   ├── account-baseline/       # Per-account security baseline
-│   ├── landing-zone-org/       # AWS Organizations, OUs, SCPs
-│   ├── tagging/                # Standard tag schema and enforcement
-│   ├── finops-budgets/         # Budgets, cost anomaly detection
-│   ├── network-vpc/            # VPC, subnets, endpoints
-│   └── iam-guardrails/         # Permission boundaries, roles
-├── environments/               # Root configs per account/environment
-│   ├── management/             # AWS Organizations management account
-│   └── workload-template/      # Template for workload accounts
-├── policies/                   # Policy-as-Code rules
-│   ├── conftest/               # OPA/Rego policies
-│   ├── checkov/                # Checkov custom checks
-│   └── scps/                   # Service Control Policy JSON
-├── docs/                       # Documentation
-│   └── adr/                    # Architecture Decision Records
-└── .github/workflows/          # CI/CD pipelines
+├── modules/                         # Reusable Terraform modules (published to registry)
+│   ├── account-baseline/            # Per-account security baseline
+│   ├── landing-zone-org/            # AWS Organizations, OUs, SCPs
+│   ├── tagging/                     # Standard tag schema and enforcement
+│   ├── finops-budgets/              # Budgets, cost anomaly detection
+│   ├── network-vpc/                 # VPC, subnets, endpoints
+│   ├── iam-guardrails/              # Permission boundaries, roles
+│   └── state-bootstrap/             # State backend (S3 + DynamoDB) for product teams
+├── environments/                    # CCoE-managed environment configs
+│   ├── management/                  # AWS Organizations management account
+│   └── workload-template/           # Template for workload accounts
+├── product-team-template/           # Starter template for product team repositories
+│   ├── .github/workflows/           # Workflow calling CCoE reusable workflows
+│   ├── environments/                # Example dev/prod environment structure
+│   └── state-bootstrap/             # State backend bootstrap for teams
+├── policies/                        # Policy-as-Code rules
+│   ├── conftest/                    # OPA/Rego policies
+│   ├── checkov/                     # Checkov custom checks
+│   └── scps/                        # Service Control Policy JSON
+├── docs/                            # Documentation
+│   ├── adr/                         # Architecture Decision Records
+│   └── consumption-guide.md         # Guide for product teams
+└── .github/workflows/               # CI/CD pipelines
+    ├── terraform-plan.yml           # Plan workflow for this repo
+    ├── terraform-apply.yml          # Apply workflow for this repo
+    ├── reusable-terraform-plan.yml  # Reusable plan (for product teams)
+    └── reusable-terraform-apply.yml # Reusable apply (for product teams)
 ```
 
 ## Quick Start
@@ -90,33 +115,20 @@ aws-landing-zone/
 | [finops-budgets](modules/finops-budgets/) | Cost management and alerting |
 | [network-vpc](modules/network-vpc/) | VPC with public/private/isolated subnets |
 | [iam-guardrails](modules/iam-guardrails/) | Permission boundaries and baseline roles |
+| [state-bootstrap](modules/state-bootstrap/) | Terraform state backend for product teams |
 
 ## Policy Enforcement
 
-All infrastructure changes are validated against policy-as-code rules:
-
-- **Conftest (OPA)**: Security, tagging, and cost policies
-- **Checkov**: CIS Benchmarks and AWS best practices
-- **SCPs**: Organization-wide guardrails
-
-See [policies/README.md](policies/README.md) for details.
-
-## CI/CD Workflow
-
-```
-PR Created → Format Check → Validate → Plan → Policy Scan → Review
-                                                              ↓
-                                              Merge to Main → Apply
-```
-
-- **Plan on PR**: Every pull request runs `terraform plan` and policy scans
-- **Apply on merge**: Approved changes are applied automatically after merge
-- **No manual applies**: All production changes flow through the pipeline
+All changes are validated against policy-as-code rules (Conftest, Checkov) and organization-wide SCPs. See [policies/README.md](policies/README.md).
 
 ## Documentation
 
-- [Architecture Decision Records](docs/adr/) - Key design decisions
-- Module READMEs - Usage examples and input/output documentation
+| Document | Audience | Description |
+|----------|----------|-------------|
+| [Consumption Guide](docs/consumption-guide.md) | Product Teams | Request accounts, consume modules, troubleshooting |
+| [CCoE Development Guide](docs/ccoe-development-guide.md) | CCoE Team | Module development, policy authoring, releases |
+| [Architecture Decision Records](docs/adr/) | All | Key design decisions |
+| [Policies README](policies/README.md) | All | Policy-as-code rules |
 
 ## Contributing
 

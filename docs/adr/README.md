@@ -33,6 +33,7 @@ What becomes easier or more difficult to do because of this change?
 | [ADR-0001](0001-ou-structure.md) | Organizational Unit Structure | Accepted |
 | [ADR-0002](0002-state-management.md) | Terraform State Management | Accepted |
 | [ADR-0003](0003-tagging-standard.md) | Tagging Standard | Accepted |
+| [ADR-0004](0004-decoupled-consumption-model.md) | Decoupled Module Consumption Model | Accepted |
 
 ## Creating a New ADR
 

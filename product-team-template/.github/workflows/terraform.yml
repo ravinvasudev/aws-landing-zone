@@ -1,0 +1,128 @@
+# ------------------------------------------------------------------------------
+# Product Team - GitHub Actions Workflow
+# Calls CCoE reusable workflows for Terraform plan and apply
+# ------------------------------------------------------------------------------
+#
+# This workflow:
+# - Runs terraform plan on pull requests
+# - Runs terraform apply on merge to main
+# - Supports multiple environments via matrix
+#
+# Prerequisites:
+# - Configure repository secrets (AWS_PLAN_ROLE_ARN, AWS_APPLY_ROLE_ARN)
+# - Set up OIDC federation between AWS and GitHub
+# - (Optional) Configure TF_REGISTRY_TOKEN for private registry
+#
+# ------------------------------------------------------------------------------
+
+name: Terraform
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'environments/**'
+      - '.github/workflows/terraform.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'environments/**'
+
+# Prevent concurrent runs for the same branch
+concurrency:
+  group: terraform-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Detect which environments changed
+  # --------------------------------------------------------------------------
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      environments: ${{ steps.changes.outputs.environments }}
+      has_changes: ${{ steps.changes.outputs.has_changes }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed environments
+        id: changes
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            BASE_REF="origin/${{ github.base_ref }}"
+          else
+            BASE_REF="HEAD~1"
+          fi
+          
+          CHANGED_DIRS=$(git diff --name-only "$BASE_REF"...HEAD 2>/dev/null | \
+            grep '^environments/' | \
+            cut -d'/' -f2 | \
+            sort -u | \
+            jq -R -s -c 'split("\n") | map(select(length > 0))')
+          
+          if [ "$CHANGED_DIRS" == "[]" ] || [ -z "$CHANGED_DIRS" ]; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "environments=[]" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "environments=$CHANGED_DIRS" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "Changed environments: $CHANGED_DIRS"
+
+  # --------------------------------------------------------------------------
+  # Terraform Plan (on Pull Request)
+  # --------------------------------------------------------------------------
+  plan:
+    name: Plan (${{ matrix.environment }})
+    needs: [detect-changes]
+    if: github.event_name == 'pull_request' && needs.detect-changes.outputs.has_changes == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJson(needs.detect-changes.outputs.environments) }}
+    # Call the CCoE reusable workflow
+    # TODO: Update 'your-org/aws-landing-zone' to your CCoE repository
+    uses: your-org/aws-landing-zone/.github/workflows/reusable-terraform-plan.yml@v1
+    with:
+      working_directory: environments/${{ matrix.environment }}
+      aws_region: us-east-1
+      enable_conftest: true
+      enable_checkov: true
+      # Point to CCoE policy repository
+      conftest_policy_repo: your-org/aws-landing-zone
+      conftest_policy_ref: v1
+    secrets:
+      AWS_PLAN_ROLE_ARN: ${{ secrets.AWS_PLAN_ROLE_ARN }}
+      TF_REGISTRY_TOKEN: ${{ secrets.TF_REGISTRY_TOKEN }}
+
+  # --------------------------------------------------------------------------
+  # Terraform Apply (on merge to main)
+  # --------------------------------------------------------------------------
+  apply:
+    name: Apply (${{ matrix.environment }})
+    needs: [detect-changes]
+    if: github.event_name == 'push' && needs.detect-changes.outputs.has_changes == 'true'
+    strategy:
+      fail-fast: false
+      max-parallel: 1  # Apply one environment at a time for safety
+      matrix:
+        environment: ${{ fromJson(needs.detect-changes.outputs.environments) }}
+    # Call the CCoE reusable workflow
+    # TODO: Update 'your-org/aws-landing-zone' to your CCoE repository
+    uses: your-org/aws-landing-zone/.github/workflows/reusable-terraform-apply.yml@v1
+    with:
+      working_directory: environments/${{ matrix.environment }}
+      aws_region: us-east-1
+      # Use GitHub Environments for approval gates on production
+      environment: ${{ matrix.environment == 'prod' && 'production' || '' }}
+    secrets:
+      AWS_APPLY_ROLE_ARN: ${{ secrets.AWS_APPLY_ROLE_ARN }}
+      TF_REGISTRY_TOKEN: ${{ secrets.TF_REGISTRY_TOKEN }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

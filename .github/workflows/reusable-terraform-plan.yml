@@ -1,0 +1,297 @@
+# ------------------------------------------------------------------------------
+# Reusable Terraform Plan Workflow
+# Called by product team repositories to run terraform plan on PRs
+# ------------------------------------------------------------------------------
+#
+# Usage in product team repository:
+#
+#   jobs:
+#     plan:
+#       uses: your-org/aws-landing-zone/.github/workflows/reusable-terraform-plan.yml@v1
+#       with:
+#         working_directory: "environments/prod"
+#         aws_region: "us-east-1"
+#       secrets:
+#         AWS_PLAN_ROLE_ARN: ${{ secrets.AWS_PLAN_ROLE_ARN }}
+#
+# ------------------------------------------------------------------------------
+
+name: Reusable Terraform Plan
+
+on:
+  workflow_call:
+    inputs:
+      working_directory:
+        description: "Directory containing Terraform configuration"
+        required: true
+        type: string
+      aws_region:
+        description: "AWS region for deployment"
+        required: false
+        type: string
+        default: "us-east-1"
+      terraform_version:
+        description: "Terraform version to use"
+        required: false
+        type: string
+        default: "1.5.7"
+      enable_conftest:
+        description: "Run Conftest policy checks"
+        required: false
+        type: boolean
+        default: true
+      enable_checkov:
+        description: "Run Checkov security scan"
+        required: false
+        type: boolean
+        default: true
+      conftest_policy_repo:
+        description: "Repository containing Conftest policies (org/repo)"
+        required: false
+        type: string
+        default: ""
+      conftest_policy_ref:
+        description: "Git ref for Conftest policies"
+        required: false
+        type: string
+        default: "main"
+    secrets:
+      AWS_PLAN_ROLE_ARN:
+        description: "IAM role ARN for terraform plan"
+        required: true
+      TF_REGISTRY_TOKEN:
+        description: "Token for private Terraform registry (optional)"
+        required: false
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Format and Validate
+  # --------------------------------------------------------------------------
+  validate:
+    name: Format & Validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout calling repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+          cli_config_credentials_token: ${{ secrets.TF_REGISTRY_TOKEN }}
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive -diff
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Terraform Init
+        working-directory: ${{ inputs.working_directory }}
+        run: terraform init -input=false
+
+      - name: Terraform Validate
+        working-directory: ${{ inputs.working_directory }}
+        run: terraform validate
+
+  # --------------------------------------------------------------------------
+  # Terraform Plan
+  # --------------------------------------------------------------------------
+  plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    needs: [validate]
+    outputs:
+      plan_exitcode: ${{ steps.plan.outputs.exitcode }}
+    steps:
+      - name: Checkout calling repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+          cli_config_credentials_token: ${{ secrets.TF_REGISTRY_TOKEN }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Terraform Init
+        working-directory: ${{ inputs.working_directory }}
+        run: terraform init -input=false
+
+      - name: Terraform Plan
+        id: plan
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          terraform plan -input=false -detailed-exitcode -out=tfplan 2>&1 | tee plan_output.txt
+          echo "exitcode=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Upload Plan Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-${{ github.run_id }}
+          path: |
+            ${{ inputs.working_directory }}/tfplan
+            ${{ inputs.working_directory }}/plan_output.txt
+          retention-days: 7
+
+      - name: Post Plan to PR
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        env:
+          PLAN_OUTPUT: ${{ steps.plan.outputs.stdout || '' }}
+        with:
+          script: |
+            const fs = require('fs');
+            const planFile = '${{ inputs.working_directory }}/plan_output.txt';
+            let planOutput = '';
+            
+            if (fs.existsSync(planFile)) {
+              planOutput = fs.readFileSync(planFile, 'utf8');
+            }
+            
+            // Truncate if too long
+            const maxLength = 60000;
+            if (planOutput.length > maxLength) {
+              planOutput = planOutput.substring(0, maxLength) + '\n\n... (truncated)';
+            }
+            
+            const body = `## Terraform Plan: \`${{ inputs.working_directory }}\`
+            
+            <details>
+            <summary>Show Plan Output</summary>
+            
+            \`\`\`hcl
+            ${planOutput}
+            \`\`\`
+            
+            </details>
+            
+            *Workflow: ${{ github.workflow }} | Run: ${{ github.run_id }}*`;
+            
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body
+            });
+
+      - name: Check Plan Status
+        if: steps.plan.outputs.exitcode == '1'
+        run: |
+          echo "::error::Terraform plan failed"
+          exit 1
+
+  # --------------------------------------------------------------------------
+  # Conftest Policy Scan
+  # --------------------------------------------------------------------------
+  conftest:
+    name: Policy Scan (Conftest)
+    runs-on: ubuntu-latest
+    needs: [plan]
+    if: inputs.enable_conftest
+    steps:
+      - name: Checkout calling repository
+        uses: actions/checkout@v4
+
+      - name: Checkout policies
+        if: inputs.conftest_policy_repo != ''
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.conftest_policy_repo }}
+          ref: ${{ inputs.conftest_policy_ref }}
+          path: policies
+          token: ${{ github.token }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+          cli_config_credentials_token: ${{ secrets.TF_REGISTRY_TOKEN }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Terraform Init
+        working-directory: ${{ inputs.working_directory }}
+        run: terraform init -input=false
+
+      - name: Generate Plan JSON
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          terraform plan -input=false -out=tfplan
+          terraform show -json tfplan > plan.json
+
+      - name: Setup Conftest
+        run: |
+          curl -L https://github.com/open-policy-agent/conftest/releases/download/v0.46.0/conftest_0.46.0_Linux_x86_64.tar.gz | tar xz
+          sudo mv conftest /usr/local/bin/
+
+      - name: Run Conftest
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          POLICY_PATH="${{ inputs.conftest_policy_repo != '' && '../policies/conftest/terraform' || 'policies/conftest/terraform' }}"
+          if [ -d "$POLICY_PATH" ]; then
+            conftest test plan.json --policy "$POLICY_PATH" --output github
+          else
+            echo "::warning::No Conftest policies found at $POLICY_PATH"
+          fi
+
+  # --------------------------------------------------------------------------
+  # Checkov Security Scan
+  # --------------------------------------------------------------------------
+  checkov:
+    name: Security Scan (Checkov)
+    runs-on: ubuntu-latest
+    needs: [plan]
+    if: inputs.enable_checkov
+    steps:
+      - name: Checkout calling repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+          cli_config_credentials_token: ${{ secrets.TF_REGISTRY_TOKEN }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Terraform Init
+        working-directory: ${{ inputs.working_directory }}
+        run: terraform init -input=false
+
+      - name: Generate Plan JSON
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          terraform plan -input=false -out=tfplan
+          terraform show -json tfplan > plan.json
+
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          file: ${{ inputs.working_directory }}/plan.json
+          framework: terraform_plan
+          output_format: github_failed_only
+          soft_fail: false
+          skip_check: ""  # Add checks to skip if needed (comma-separated)

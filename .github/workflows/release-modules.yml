@@ -1,0 +1,159 @@
+# Module Release Workflow
+# Creates Git tags and GitHub releases for module versioning
+#
+# Trigger manually via workflow_dispatch with the version number
+
+name: Release Modules
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.2.0)'
+        required: true
+        type: string
+      release_notes:
+        description: 'Release notes (markdown supported)'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  validate-version:
+    name: Validate Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.validate.outputs.version }}
+    steps:
+      - name: Validate semver format
+        id: validate
+        run: |
+          VERSION="${{ inputs.version }}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version must be in semver format (X.Y.Z)"
+            exit 1
+          fi
+          echo "version=v$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check tag doesn't exist
+        run: |
+          if git rev-parse "v${{ inputs.version }}" >/dev/null 2>&1; then
+            echo "::error::Tag v${{ inputs.version }} already exists"
+            exit 1
+          fi
+
+  validate-modules:
+    name: Validate Modules
+    runs-on: ubuntu-latest
+    needs: [validate-version]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.5.7"
+
+      - name: Validate all modules
+        run: |
+          FAILED=0
+          for dir in modules/*/; do
+            echo "::group::Validating $dir"
+            cd "$dir"
+            
+            # Check required files exist
+            for file in README.md variables.tf outputs.tf versions.tf; do
+              if [ ! -f "$file" ]; then
+                echo "::error::Missing $file in $dir"
+                FAILED=1
+              fi
+            done
+            
+            # Terraform validation
+            terraform init -backend=false
+            terraform validate
+            terraform fmt -check
+            
+            cd - > /dev/null
+            echo "::endgroup::"
+          done
+          
+          if [ $FAILED -eq 1 ]; then
+            exit 1
+          fi
+
+      - name: Check CHANGELOG exists
+        run: |
+          if [ ! -f "CHANGELOG.md" ]; then
+            echo "::warning::CHANGELOG.md not found. Consider adding one."
+          fi
+
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [validate-version, validate-modules]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          VERSION="v${{ inputs.version }}"
+          NOTES="${{ inputs.release_notes }}"
+          
+          if [ -z "$NOTES" ]; then
+            NOTES="## Modules Included\n\n"
+            for dir in modules/*/; do
+              MODULE_NAME=$(basename "$dir")
+              NOTES+="- \`$MODULE_NAME\`\n"
+            done
+            NOTES+="\n## Usage\n\n"
+            NOTES+="\`\`\`hcl\n"
+            NOTES+="module \"example\" {\n"
+            NOTES+="  source = \"git::https://github.com/\${{ github.repository }}.git//modules/MODULE_NAME?ref=$VERSION\"\n"
+            NOTES+="}\n"
+            NOTES+="\`\`\`"
+          fi
+          
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Git Tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ inputs.version }}" -m "Release v${{ inputs.version }}"
+          git push origin "v${{ inputs.version }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ inputs.version }}
+          name: v${{ inputs.version }}
+          body: ${{ steps.notes.outputs.notes }}
+          draft: false
+          prerelease: false
+
+      - name: Summary
+        run: |
+          echo "## Release Created :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** v${{ inputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Module References" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          for dir in modules/*/; do
+            MODULE_NAME=$(basename "$dir")
+            echo "- \`git::https://github.com/${{ github.repository }}.git//modules/$MODULE_NAME?ref=v${{ inputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          done

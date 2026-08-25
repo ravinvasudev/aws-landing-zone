@@ -1,0 +1,162 @@
+# ------------------------------------------------------------------------------
+# Reusable Terraform Apply Workflow
+# Called by product team repositories to apply terraform on merge to main
+# ------------------------------------------------------------------------------
+#
+# Usage in product team repository:
+#
+#   jobs:
+#     apply:
+#       uses: your-org/aws-landing-zone/.github/workflows/reusable-terraform-apply.yml@v1
+#       with:
+#         working_directory: "environments/prod"
+#         aws_region: "us-east-1"
+#         environment: "production"
+#       secrets:
+#         AWS_APPLY_ROLE_ARN: ${{ secrets.AWS_APPLY_ROLE_ARN }}
+#
+# ------------------------------------------------------------------------------
+
+name: Reusable Terraform Apply
+
+on:
+  workflow_call:
+    inputs:
+      working_directory:
+        description: "Directory containing Terraform configuration"
+        required: true
+        type: string
+      aws_region:
+        description: "AWS region for deployment"
+        required: false
+        type: string
+        default: "us-east-1"
+      terraform_version:
+        description: "Terraform version to use"
+        required: false
+        type: string
+        default: "1.5.7"
+      environment:
+        description: "GitHub environment for approvals (optional)"
+        required: false
+        type: string
+        default: ""
+      plan_artifact_name:
+        description: "Name of the plan artifact from previous workflow (optional)"
+        required: false
+        type: string
+        default: ""
+    secrets:
+      AWS_APPLY_ROLE_ARN:
+        description: "IAM role ARN for terraform apply"
+        required: true
+      TF_REGISTRY_TOKEN:
+        description: "Token for private Terraform registry (optional)"
+        required: false
+      SLACK_WEBHOOK_URL:
+        description: "Slack webhook for notifications (optional)"
+        required: false
+    outputs:
+      apply_result:
+        description: "Result of terraform apply (success/failure)"
+        value: ${{ jobs.apply.outputs.result }}
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Terraform Apply
+  # --------------------------------------------------------------------------
+  apply:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || null }}
+    outputs:
+      result: ${{ steps.apply.outcome }}
+    steps:
+      - name: Checkout calling repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+          cli_config_credentials_token: ${{ secrets.TF_REGISTRY_TOKEN }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_APPLY_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Terraform Init
+        working-directory: ${{ inputs.working_directory }}
+        run: terraform init -input=false
+
+      # Download plan from previous workflow if provided
+      - name: Download Plan Artifact
+        if: inputs.plan_artifact_name != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.plan_artifact_name }}
+          path: ${{ inputs.working_directory }}
+
+      - name: Terraform Apply (from plan)
+        id: apply-plan
+        if: inputs.plan_artifact_name != ''
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          if [ -f "tfplan" ]; then
+            terraform apply -auto-approve -input=false tfplan
+          else
+            echo "::error::Plan file not found"
+            exit 1
+          fi
+
+      - name: Terraform Apply (fresh)
+        id: apply
+        if: inputs.plan_artifact_name == ''
+        working-directory: ${{ inputs.working_directory }}
+        run: terraform apply -auto-approve -input=false
+
+      - name: Notify Success (Slack)
+        if: success() && secrets.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+            --data "{
+              \"text\": \":white_check_mark: Terraform Apply Succeeded\",
+              \"blocks\": [
+                {
+                  \"type\": \"section\",
+                  \"text\": {
+                    \"type\": \"mrkdwn\",
+                    \"text\": \":white_check_mark: *Terraform Apply Succeeded*\n*Repository:* ${{ github.repository }}\n*Environment:* ${{ inputs.working_directory }}\n*Commit:* \`${{ github.sha }}\`\n*Actor:* ${{ github.actor }}\"
+                  }
+                }
+              ]
+            }" \
+            "$SLACK_WEBHOOK_URL"
+
+      - name: Notify Failure (Slack)
+        if: failure() && secrets.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+            --data "{
+              \"text\": \":x: Terraform Apply Failed\",
+              \"blocks\": [
+                {
+                  \"type\": \"section\",
+                  \"text\": {
+                    \"type\": \"mrkdwn\",
+                    \"text\": \":x: *Terraform Apply Failed*\n*Repository:* ${{ github.repository }}\n*Environment:* ${{ inputs.working_directory }}\n*Commit:* \`${{ github.sha }}\`\n*Actor:* ${{ github.actor }}\n*Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>\"
+                  }
+                }
+              ]
+            }" \
+            "$SLACK_WEBHOOK_URL"

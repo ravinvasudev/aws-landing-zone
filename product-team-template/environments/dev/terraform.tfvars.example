@@ -1,0 +1,20 @@
+# Development Environment Configuration
+# Copy this file to terraform.tfvars and customize
+
+# AWS Region
+aws_region = "us-east-1"
+
+# Required Tags
+cost_center         = "CLOUD-001"
+owner               = "platform-team@example.com"
+environment         = "dev"
+data_classification = "internal"
+product             = "my-app"
+
+# Networking
+vpc_cidr           = "10.0.0.0/16"
+availability_zones = ["us-east-1a", "us-east-1b"]
+
+# FinOps
+monthly_budget_usd = 500
+budget_alert_email = "platform-team@example.com"
